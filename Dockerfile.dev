@@ -1,0 +1,23 @@
+# Use Miniconda base image
+FROM continuumio/miniconda3:latest
+
+WORKDIR /app
+
+# Create a clean conda env with Python 3.11
+RUN conda create -y -n rebalance_env python=3.11 \
+    && echo "conda activate rebalance_env" >> ~/.bashrc
+
+# Install only Excel-related engines from conda
+# (leave pandas/numpy/requests/yfinance to pip to match requirements.txt)
+RUN conda install -n rebalance_env -y openpyxl xlsxwriter
+
+# Copy requirements and install pinned versions
+COPY requirements.txt /app/
+RUN conda run -n rebalance_env pip install --no-cache-dir -r requirements.txt
+
+# Copy source code
+COPY . /app/
+
+
+# Run API with uvicorn
+CMD ["conda", "run", "--no-capture-output", "-n", "rebalance_env", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

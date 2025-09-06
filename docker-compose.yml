@@ -1,0 +1,9 @@
+services:
+  rebalance-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev   # use dev build for local testing
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app

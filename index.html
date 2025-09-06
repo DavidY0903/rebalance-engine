@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Rebalance Engine v1.4</title>
+</head>
+<body>
+  <h2>Upload your portfolio Excel file</h2>
+  <form id="uploadForm" enctype="multipart/form-data">
+    <input type="file" name="file" id="fileInput" required />
+    <input type="text" name="output_name" placeholder="Optional output name.xlsx" />
+    <button type="submit">Rebalance</button>
+  </form>
+  <p id="status"></p>
+
+  <script>
+    const form = document.getElementById('uploadForm');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const formData = new FormData(form);
+      document.getElementById('status').innerText = "Processing...";
+
+      const response = await fetch("/api/rebalance", {
+        method: "POST",
+        body: formData
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = formData.get("output_name") || "rebalance_result.xlsx";
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.getElementById('status').innerText = "✅ Done!";
+      } else {
+        const error = await response.json();
+        document.getElementById('status').innerText = "❌ Error: " + error.error;
+      }
+    });
+  </script>
+</body>
+</html>
