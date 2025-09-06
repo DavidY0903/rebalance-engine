@@ -30,4 +30,4 @@ COPY . /app/
 EXPOSE 8000
 
 # Default command: run FastAPI app inside conda env
-CMD ["conda", "run", "--no-capture-output", "-n", "rebalance_env", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["conda", "run", "--no-capture-output", "-n", "rebalance_env", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "$PORT"]
