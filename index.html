@@ -20,23 +20,27 @@
       const formData = new FormData(form);
       document.getElementById('status').innerText = "Processing...";
 
-      const response = await fetch("/api/rebalance", {
-        method: "POST",
-        body: formData
-      });
+      try {
+        const response = await fetch("/api/rebalance", {
+          method: "POST",
+          body: formData
+        });
 
-      if (response.ok) {
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = formData.get("output_name") || "rebalance_result.xlsx";
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.getElementById('status').innerText = "✅ Done!";
-      } else {
-        const error = await response.json();
-        document.getElementById('status').innerText = "❌ Error: " + error.error;
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = formData.get("output_name") || "rebalance_result.xlsx";
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.getElementById('status').innerText = "✅ Done!";
+        } else {
+          const error = await response.json();
+          document.getElementById('status').innerText = "❌ Error: " + error.error;
+        }
+      } catch (err) {
+        document.getElementById('status').innerText = "❌ Error: " + err.message;
       }
     });
   </script>

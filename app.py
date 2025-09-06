@@ -1,56 +1,55 @@
-# app.py
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse
-from pathlib import Path
+from fastapi import FastAPI, UploadFile, Form
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+import os
+import shutil
 import tempfile
-import uvicorn
+from rebalance_engine_v1_4 import run_engine
 
-from engine_adapter import run_rebalance
+app = FastAPI()
 
-from fastapi.responses import HTMLResponse
+# Allow frontend ↔ backend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # ⚠️ for open use; restrict later if needed
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app = FastAPI(title="Rebalance Engine v1.4 API", version="1.0")
+# Serve index.html at root
+@app.get("/", response_class=HTMLResponse)
+async def read_index():
+    here = os.path.dirname(__file__)
+    with open(os.path.join(here, "index.html"), "r", encoding="utf-8") as f:
+        return f.read()
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
+# API endpoint for rebalancing
 @app.post("/api/rebalance")
-async def api_rebalance(
-    file: UploadFile = File(..., description="Input Excel file"),
-    output_name: str | None = Form(None),
-):
+async def rebalance(file: UploadFile, output_name: str = Form(None)):
     try:
-        tmpdir = Path(tempfile.mkdtemp(prefix="upload_"))
-        in_path = tmpdir / file.filename
-        with open(in_path, "wb") as f:
-            f.write(await file.read())
+        # Save uploaded file temporarily
+        tmpdir = tempfile.mkdtemp(prefix="rebalance_")
+        input_path = os.path.join(tmpdir, file.filename)
+        with open(input_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
 
-        out_path = run_rebalance(str(in_path), output_filename=output_name)
+        # Decide output filename
+        if not output_name:
+            output_name = "rebalance_result.xlsx"
+        if not output_name.endswith(".xlsx"):
+            output_name += ".xlsx"
+        output_path = os.path.join(tmpdir, output_name)
 
+        # Run engine
+        run_engine(input_path, output_path)
+
+        # Return file for download
         return FileResponse(
-            path=out_path,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=Path(out_path).name,
+            path=output_path,
+            filename=output_name,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
-    
-@app.get("/", response_class=HTMLResponse)
-def index():
-    with open("index.html") as f:
-        return f.read()
-    
-from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
-
-# serve static files (e.g., index.html, CSS, JS)
-app.mount("/static", StaticFiles(directory="."), name="static")
-
-@app.get("/")
-async def root():
-    return FileResponse("index.html")
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
