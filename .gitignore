@@ -1,0 +1,65 @@
+# -----------------------------
+# Python
+# -----------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+*.env
+*.env.*
+
+# Jupyter & notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# -----------------------------
+# macOS
+# -----------------------------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# -----------------------------
+# VSCode
+# -----------------------------
+.vscode/
+*.code-workspace
+
+# -----------------------------
+# Docker
+# -----------------------------
+*.pid
+*.seed
+*.log
+tmp/
+*.tmp
+
+# -----------------------------
+# Excel/Reports (output files)
+# -----------------------------
+*.xlsx
+rebalance recommendation*
+rebalancing Input file*
+
+# -----------------------------
+# Node/Frontend (just in case)
+# -----------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
