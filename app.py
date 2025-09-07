@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 import os
 import shutil
 import tempfile
@@ -7,9 +8,14 @@ from rebalance_engine_v1_4 import run_engine
 
 app = FastAPI()
 
-@app.get("/")
+# Mount static files (to serve index.html and any other assets)
+app.mount("/static", StaticFiles(directory="."), name="static")
+
+@app.get("/", response_class=HTMLResponse)
 def root():
-    return {"message": "Rebalance Engine API is running"}
+    """Serve the main upload page."""
+    with open("index.html", "r", encoding="utf-8") as f:
+        return f.read()
 
 # ✅ Health check for Render
 @app.get("/healthz")
