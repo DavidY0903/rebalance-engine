@@ -26,8 +26,9 @@ RUN conda run -n rebalance_env pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . /app/
 
-# Expose port
+# Expose port (Render injects $PORT dynamically, 8000 is just local default)
 EXPOSE 8000
 
 # Default command: run FastAPI app inside conda env
-CMD ["conda", "run", "--no-capture-output", "-n", "rebalance_env", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use shell form so $PORT expands correctly in Render
+CMD conda run --no-capture-output -n rebalance_env uvicorn app:app --host 0.0.0.0 --port $PORT
