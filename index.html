@@ -31,7 +31,18 @@
           const url = window.URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
-          a.download = formData.get("output_name") || "rebalance_result.xlsx";
+
+          // ✅ Add Taiwan/HK local timestamp
+          const now = new Date();
+          const tzOffset = now.getTime() + (now.getTimezoneOffset() * 60000);
+          const hkNow = new Date(tzOffset + (8 * 3600000)); // UTC+8
+          const ts = hkNow.toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
+
+          let baseName = formData.get("output_name") || "rebalance_result.xlsx";
+          if (!baseName.endsWith(".xlsx")) baseName += ".xlsx";
+          baseName = baseName.replace(/\.xlsx$/, `_${ts}.xlsx`);
+
+          a.download = baseName;
           a.click();
           window.URL.revokeObjectURL(url);
           document.getElementById('status').innerText = "✅ Done!";
