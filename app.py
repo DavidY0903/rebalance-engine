@@ -1,9 +1,9 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
+from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
 from pathlib import Path
 import tempfile
-import urllib.parse
 import uvicorn
+import urllib.parse
 
 from engine_adapter import run_rebalance
 
@@ -16,21 +16,24 @@ def health():
 @app.post("/api/rebalance")
 async def api_rebalance(file: UploadFile = File(...)):
     try:
+        # Save uploaded file to tmpdir
         tmpdir = Path(tempfile.mkdtemp(prefix="upload_"))
         in_path = tmpdir / file.filename
         with open(in_path, "wb") as f:
             f.write(await file.read())
 
-        out_path = run_rebalance(str(in_path))  # auto-generate filename
-        fname = Path(out_path).name
+        # Run engine — it auto-generates the dynamic output filename
+        out_path = Path(run_rebalance(str(in_path)))
 
-        # Explicit UTF-8 filename in Content-Disposition
+        # Encode filename for Content-Disposition
+        encoded_filename = urllib.parse.quote(out_path.name)
+
         headers = {
-            "Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(fname)}"
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
         }
 
-        return FileResponse(
-            path=out_path,
+        return StreamingResponse(
+            open(out_path, "rb"),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers=headers,
         )

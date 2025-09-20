@@ -72,10 +72,10 @@
                 const blob = await res.blob();
                 const url = window.URL.createObjectURL(blob);
 
-                // Auto filename comes from Content-Disposition header
+                // ✅ Always trust server-provided filename
                 const disposition = res.headers.get("Content-Disposition");
                 let filename = "rebalance_result.xlsx";
-                if (disposition && disposition.includes("filename=")) {
+                if (disposition) {
                     const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/);
                     if (match && match[1]) {
                         try {
@@ -89,8 +89,11 @@
                 const a = document.createElement("a");
                 a.href = url;
                 a.download = filename;
+                document.body.appendChild(a);
                 a.click();
+                a.remove();
                 window.URL.revokeObjectURL(url);
+
                 result.textContent = "✅ 已完成，檔案已下載: " + filename;
             } catch (err) {
                 result.textContent = "❌ Error: " + err.message;
