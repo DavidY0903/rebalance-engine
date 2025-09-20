@@ -1,7 +1,8 @@
 from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, Response
 from pathlib import Path
 import tempfile
+import urllib.parse
 import uvicorn
 
 from engine_adapter import run_rebalance
@@ -21,11 +22,17 @@ async def api_rebalance(file: UploadFile = File(...)):
             f.write(await file.read())
 
         out_path = run_rebalance(str(in_path))  # auto-generate filename
+        fname = Path(out_path).name
+
+        # Explicit UTF-8 filename in Content-Disposition
+        headers = {
+            "Content-Disposition": f"attachment; filename*=UTF-8''{urllib.parse.quote(fname)}"
+        }
 
         return FileResponse(
             path=out_path,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=Path(out_path).name,
+            headers=headers,
         )
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})

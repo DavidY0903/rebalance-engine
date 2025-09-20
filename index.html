@@ -76,7 +76,14 @@
                 const disposition = res.headers.get("Content-Disposition");
                 let filename = "rebalance_result.xlsx";
                 if (disposition && disposition.includes("filename=")) {
-                    filename = disposition.split("filename=")[1].replace(/"/g, "");
+                    const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/);
+                    if (match && match[1]) {
+                        try {
+                            filename = decodeURIComponent(match[1]);
+                        } catch {
+                            filename = match[1];
+                        }
+                    }
                 }
 
                 const a = document.createElement("a");
