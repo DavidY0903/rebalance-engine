@@ -1,49 +1,39 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-import os
-import shutil
+from pathlib import Path
 import tempfile
-from rebalance_engine_v1_4 import run_engine
+import uvicorn
 
-app = FastAPI()
+from engine_adapter import run_rebalance
 
-# Mount static files (to serve index.html and any other assets)
-app.mount("/static", StaticFiles(directory="."), name="static")
+app = FastAPI(title="Rebalance Engine v1.4 API", version="1.0")
 
-@app.get("/", response_class=HTMLResponse)
-def root():
-    """Serve the main upload page."""
-    with open("index.html", "r", encoding="utf-8") as f:
-        return f.read()
-
-# ✅ Health check for Render
-@app.get("/healthz")
-def health_check():
+@app.get("/health")
+def health():
     return {"status": "ok"}
 
 @app.post("/api/rebalance")
-async def rebalance(file: UploadFile = File(...), output_name: str = Form(None)):
+async def api_rebalance(file: UploadFile = File(...)):
     try:
-        # Save upload to temp dir
-        tmpdir = tempfile.mkdtemp(prefix="rebalance_")
-        input_path = os.path.join(tmpdir, file.filename)
-        with open(input_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        tmpdir = Path(tempfile.mkdtemp(prefix="upload_"))
+        in_path = tmpdir / file.filename
+        with open(in_path, "wb") as f:
+            f.write(await file.read())
 
-        # Pick output filename
-        if not output_name:
-            base, _ = os.path.splitext(file.filename)
-            output_name = f"{base}_rebalance.xlsx"
-        output_path = os.path.join(tmpdir, output_name)
-
-        # Run engine
-        run_engine(input_path, output_path)
+        out_path = run_rebalance(str(in_path))  # auto-generate filename
 
         return FileResponse(
-            output_path,
+            path=out_path,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            filename=output_name
+            filename=Path(out_path).name,
         )
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.get("/", response_class=HTMLResponse)
+def index():
+    with open("index.html") as f:
+        return f.read()
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)

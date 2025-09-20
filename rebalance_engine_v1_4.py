@@ -232,7 +232,6 @@ def run_engine(input_file: str, output_file: str) -> str:
 
 
 def main(input_path: str = None, output_path: str = None):
-
     """
     Core rebalance logic.
     - input_path: Excel input file path
@@ -242,25 +241,29 @@ def main(input_path: str = None, output_path: str = None):
     if input_path is None:
         input_path = _pick_input_filename()
 
-    # If API gives us output_path, we use it directly.
-    # Otherwise, fall back to your old timestamp-based filename.
+    user_name = "User"
+
+    # Decide on output_path only once
     if output_path is None:
         hk_now = datetime.utcnow() + timedelta(hours=8)
         timestamp_str = hk_now.strftime("%Y-%m-%d %H %M %S")
+
         try:
             user_df__tmp = pd.read_excel(input_path, sheet_name="Input File", header=None)
             _a1 = user_df__tmp.iloc[0, 0] if user_df__tmp.shape[0] > 0 and user_df__tmp.shape[1] > 0 else ""
             if isinstance(_a1, str) and _a1.strip():
                 user_name = _a1.strip()
             else:
-                _m = re.search(r"\(([^)]+)\)", os.path.basename(input_path))
-                user_name = _m.group(1) if _m else "User"
+                m = re.search(r"\(([^)]+)\)", os.path.basename(input_path))
+                user_name = m.group(1) if m else "User"
         except Exception:
-            _m = re.search(r"\(([^)]+)\)", os.path.basename(input_path))
-            user_name = _m.group(1) if _m else "User"
+            m = re.search(r"\(([^)]+)\)", os.path.basename(input_path))
+            user_name = m.group(1) if m else "User"
+
         output_filename = f"rebalance recommendation ({user_name})({timestamp_str}).xlsx"
         output_path = os.path.join(os.path.dirname(os.path.abspath(input_path)), output_filename)
 
+    # ✅ From here, just use `user_name` for metadata/logs
     xl = pd.ExcelFile(input_path)
     sheet_name = next((s for s in xl.sheet_names if s.strip().lower() == "current profile"), xl.sheet_names[0])
     raw_input_df = pd.read_excel(input_path, sheet_name=sheet_name, header=None)
@@ -269,32 +272,10 @@ def main(input_path: str = None, output_path: str = None):
         if not raw_input_df.iloc[:, 0].astype(str).str.contains(section, na=False).any():
             raise ValueError(f"❌ Missing section: {section}")
 
-    # Metadata
+    # Metadata (reuse user_name computed earlier)
     hk_now = datetime.utcnow() + timedelta(hours=8)
     timestamp_str = hk_now.strftime("%Y-%m-%d %H %M %S")
-    # FIX #1: extract user name from "Input File" sheet (fallback to filename)
-    try:
-        user_df__tmp = pd.read_excel(input_path, sheet_name="Input File", header=None)
-        _a1 = user_df__tmp.iloc[0, 0] if user_df__tmp.shape[0] > 0 and user_df__tmp.shape[1] > 0 else ""
-        _name = _a1.strip() if isinstance(_a1, str) and _a1.strip() else ""
-        if not _name:
-            for _r in range(min(10, user_df__tmp.shape[0])):
-                for _c in range(min(5, user_df__tmp.shape[1])):
-                    _v = user_df__tmp.iloc[_r, _c]
-                    if isinstance(_v, str) and _v.strip():
-                        _name = _v.strip()
-                        break
-                if _name:
-                    break
-        if not _name:
-            _m = re.search(r"\(([^)]+)\)", os.path.basename(input_path))
-            _name = _m.group(1) if _m else "User"
-        user_name = _name
-    except Exception:
-        _m = re.search(r"\(([^)]+)\)", os.path.basename(input_path))
-        user_name = _m.group(1) if _m else "User"
-    output_filename = f"rebalance recommendation ({user_name})({timestamp_str}).xlsx"
-    # output_path = os.path.join(os.path.dirname(os.path.abspath(input_path)), output_filename)
+    # do not regenerate filename here — just keep `user_name` for workbook metadata/logging
 
     # Config and section extraction
     config = _extract_config(raw_input_df)

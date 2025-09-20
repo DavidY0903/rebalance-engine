@@ -1,59 +1,94 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
-  <meta charset="utf-8">
-  <title>Rebalance Engine v1.4</title>
+    <meta charset="UTF-8">
+    <title>Rebalance Engine v1.4</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h2 { color: #333; }
+        .form-row { margin-bottom: 20px; }
+        .drop-zone {
+            width: 100%; padding: 20px;
+            border: 2px dashed #aaa;
+            text-align: center;
+            cursor: pointer;
+            color: #666;
+        }
+        .drop-zone.dragover { border-color: #333; color: #000; }
+        #result { margin-top: 20px; }
+        button { padding: 10px 20px; font-size: 16px; }
+    </style>
 </head>
 <body>
-  <h2>Upload your portfolio Excel file</h2>
-  <form id="uploadForm" enctype="multipart/form-data">
-    <input type="file" name="file" id="fileInput" required />
-    <input type="text" name="output_name" placeholder="Optional output name.xlsx" />
-    <button type="submit">Rebalance</button>
-  </form>
-  <p id="status"></p>
+    <h2>選擇你的輸入檔案</h2>
+    <form id="rebalanceForm">
+        <div class="form-row">
+            <input type="file" name="file" id="fileInput" required hidden>
+            <div id="dropZone" class="drop-zone">拖曳或點擊選擇檔案</div>
+        </div>
+        <div class="form-row">
+            <button type="submit">Rebalance</button>
+        </div>
+    </form>
+    <div id="result"></div>
 
-  <script>
-    const form = document.getElementById('uploadForm');
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const formData = new FormData(form);
-      document.getElementById('status').innerText = "Processing...";
+    <script>
+        const dropZone = document.getElementById("dropZone");
+        const fileInput = document.getElementById("fileInput");
+        const form = document.getElementById("rebalanceForm");
+        const result = document.getElementById("result");
 
-      try {
-        const response = await fetch("/api/rebalance", {
-          method: "POST",
-          body: formData
+        dropZone.addEventListener("click", () => fileInput.click());
+        dropZone.addEventListener("dragover", e => {
+            e.preventDefault();
+            dropZone.classList.add("dragover");
+        });
+        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+        dropZone.addEventListener("drop", e => {
+            e.preventDefault();
+            dropZone.classList.remove("dragover");
+            fileInput.files = e.dataTransfer.files;
+            dropZone.textContent = fileInput.files[0].name;
+        });
+        fileInput.addEventListener("change", () => {
+            if (fileInput.files.length > 0) {
+                dropZone.textContent = fileInput.files[0].name;
+            }
         });
 
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
+        form.addEventListener("submit", async e => {
+            e.preventDefault();
+            if (!fileInput.files.length) return;
 
-          // ✅ Add Taiwan/HK local timestamp
-          const now = new Date();
-          const tzOffset = now.getTime() + (now.getTimezoneOffset() * 60000);
-          const hkNow = new Date(tzOffset + (8 * 3600000)); // UTC+8
-          const ts = hkNow.toISOString().replace(/[:.]/g, "-").replace("T", "_").split("Z")[0];
+            const formData = new FormData();
+            formData.append("file", fileInput.files[0]);
 
-          let baseName = formData.get("output_name") || "rebalance_result.xlsx";
-          if (!baseName.endsWith(".xlsx")) baseName += ".xlsx";
-          baseName = baseName.replace(/\.xlsx$/, `_${ts}.xlsx`);
+            result.textContent = "處理中...";
 
-          a.download = baseName;
-          a.click();
-          window.URL.revokeObjectURL(url);
-          document.getElementById('status').innerText = "✅ Done!";
-        } else {
-          const error = await response.json();
-          document.getElementById('status').innerText = "❌ Error: " + error.error;
-        }
-      } catch (err) {
-        document.getElementById('status').innerText = "❌ Error: " + err.message;
-      }
-    });
-  </script>
+            try {
+                const res = await fetch("/api/rebalance", { method: "POST", body: formData });
+                if (!res.ok) throw new Error("Rebalance failed");
+
+                const blob = await res.blob();
+                const url = window.URL.createObjectURL(blob);
+
+                // Auto filename comes from Content-Disposition header
+                const disposition = res.headers.get("Content-Disposition");
+                let filename = "rebalance_result.xlsx";
+                if (disposition && disposition.includes("filename=")) {
+                    filename = disposition.split("filename=")[1].replace(/"/g, "");
+                }
+
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                a.click();
+                window.URL.revokeObjectURL(url);
+                result.textContent = "✅ 已完成，檔案已下載: " + filename;
+            } catch (err) {
+                result.textContent = "❌ Error: " + err.message;
+            }
+        });
+    </script>
 </body>
 </html>
