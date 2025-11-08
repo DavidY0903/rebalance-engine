@@ -1,0 +1,195 @@
+/* ========== Global Variables (Light & Dark Mode) ========== */
+:root {
+    --bg: #f4f6f9;
+    --fg: #333;
+    --card-bg: #fff;
+    --border: #ddd;
+    --primary: #4CAF50;
+    --shadow: rgba(0,0,0,0.08);
+}
+
+body.dark {
+    --bg: #1e1f22;
+    --fg: #e5e5e5;
+    --card-bg: #2a2b2f;
+    --border: #444;
+    --primary: #67d677;
+    --shadow: rgba(0,0,0,0.3);
+}
+
+/* ========== Basic Page Style ========== */
+body {
+    margin: 0;
+    font-family: "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    transition: 0.3s ease;
+}
+
+/* ========== Top Bar with Dark Mode Toggle ========== */
+.top-bar {
+    background: var(--card-bg);
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 3px 10px var(--shadow);
+    font-weight: 600;
+}
+
+/* Toggle switch */
+.switch {
+    position: relative;
+    width: 45px;
+    height: 22px;
+}
+.switch input { display: none; }
+.slider {
+    position: absolute;
+    cursor: pointer;
+    background-color: #aaa;
+    border-radius: 22px;
+    top: 0; left: 0; right: 0; bottom: 0;
+    transition: 0.3s;
+}
+.slider:before {
+    content: "";
+    position: absolute;
+    height: 18px; width: 18px;
+    left: 2px; bottom: 2px;
+    background-color: white;
+    border-radius: 50%;
+    transition: 0.3s;
+}
+input:checked + .slider {
+    background-color: #4CAF50;
+}
+input:checked + .slider:before {
+    transform: translateX(23px);
+}
+
+/* ========== Main Container ========== */
+.container {
+    max-width: 650px;
+    margin: 40px auto;
+    background: var(--card-bg);
+    padding: 30px;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px var(--shadow);
+    transition: 0.3s;
+}
+
+/* Title */
+h1 {
+    text-align: center;
+    margin-bottom: 10px;
+    font-weight: 700;
+}
+.subtitle {
+    font-size: 0.65em;
+    color: #888;
+}
+
+/* Upload label */
+.label {
+    margin-top: 20px;
+    font-weight: 600;
+    text-align: center;
+}
+
+/* ========== Drag-and-Drop ========== */
+#drop-area {
+    margin-top: 15px;
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.25s;
+    background: var(--bg);
+}
+#drop-area:hover {
+    border-color: var(--primary);
+    background: rgba(76, 175, 80, 0.05);
+}
+
+.drop-inner {
+    padding: 35px 20px;
+    text-align: center;
+    transition: 0.2s;
+}
+
+#fileElem {
+    display: none;
+}
+
+.selected-file {
+    text-align: center;
+    margin-top: 10px;
+}
+
+/* ========== Buttons ========== */
+button {
+    width: 100%;
+    padding: 16px;
+    margin-top: 22px;
+    background: var(--primary);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 18px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+button:disabled {
+    background: #aaa;
+    cursor: not-allowed;
+}
+button:hover:not(:disabled) {
+    background: #3E9F44;
+}
+
+/* Download button */
+#download-btn {
+    display: inline-block;
+    padding: 12px 20px;
+    background: var(--primary);
+    color: white;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+}
+#download-btn:hover {
+    background: #3E9F44;
+}
+
+/* ========== Loader Animation ========== */
+#loader {
+    margin-top: 20px;
+    text-align: center;
+    font-weight: 600;
+    font-size: 16px;
+}
+.dots::after {
+    content: '';
+    animation: dots 1.2s infinite steps(4);
+}
+@keyframes dots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+    100% { content: ''; }
+}
+
+.hidden { display: none; }
+
+/* ========== Success Box ========== */
+#success-box {
+    margin-top: 25px;
+    padding: 18px;
+    background: rgba(76, 175, 80, 0.15);
+    border-left: 6px solid var(--primary);
+    border-radius: 8px;
+    font-size: 16px;
+    text-align: center;
+}

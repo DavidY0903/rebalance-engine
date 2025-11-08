@@ -8,7 +8,7 @@ WORKDIR /app
 RUN conda create -y -n rebalance_env python=3.11 \
     && echo "conda activate rebalance_env" >> ~/.bashrc
 
-# Install main deps with conda (faster, prebuilt binaries)
+# Install main deps with conda
 RUN conda install -n rebalance_env -y \
     pandas \
     numpy \
@@ -17,18 +17,17 @@ RUN conda install -n rebalance_env -y \
     requests \
     && conda clean -afy
 
-# Copy requirements first (better caching)
+# Copy requirements first for caching
 COPY requirements.txt /app/
 
-# Install pip-only packages inside the conda env (fastapi, uvicorn, yfinance, ta, etc.)
+# Install pip-only packages
 RUN conda run -n rebalance_env pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
+# ✅ Copy application code (HTML, Python, static files)
 COPY . /app/
 
-# Expose port (Render injects $PORT dynamically, 8000 is just local default)
+# Expose port (Render uses dynamic $PORT)
 EXPOSE 8000
 
-# Default command: run FastAPI app inside conda env
-# Use shell form so $PORT expands correctly in Render
+# ✅ CMD must always be last
 CMD conda run --no-capture-output -n rebalance_env uvicorn app:app --host 0.0.0.0 --port $PORT

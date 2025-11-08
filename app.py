@@ -4,10 +4,15 @@ from pathlib import Path
 import tempfile
 import uvicorn
 import urllib.parse
+from fastapi.staticfiles import StaticFiles
+
 
 from engine_adapter import run_rebalance
 
-app = FastAPI(title="Rebalance Engine v1.4 API", version="1.0")
+app = FastAPI()
+
+# ✅ Mount static files (CSS + JS)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/health")
 def health():

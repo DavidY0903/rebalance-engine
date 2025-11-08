@@ -2,103 +2,72 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>Rebalance Engine v1.4</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 40px; }
-        h2 { color: #333; }
-        .form-row { margin-bottom: 20px; }
-        .drop-zone {
-            width: 100%; padding: 20px;
-            border: 2px dashed #aaa;
-            text-align: center;
-            cursor: pointer;
-            color: #666;
-        }
-        .drop-zone.dragover { border-color: #333; color: #000; }
-        #result { margin-top: 20px; }
-        button { padding: 10px 20px; font-size: 16px; }
-    </style>
+    <title>Rebalance Engine v1.5</title>
+
+    <!-- Load external CSS -->
+    <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
-    <h2>選擇你的輸入檔案</h2>
-    <form id="rebalanceForm">
-        <div class="form-row">
-            <input type="file" name="file" id="fileInput" required hidden>
-            <div id="dropZone" class="drop-zone">拖曳或點擊選擇檔案</div>
+
+<!-- ✅ Top Bar -->
+<div class="top-bar">
+    <span>Rebalance Engine v1.5</span>
+    <label class="switch">
+        <input type="checkbox" id="darkToggle">
+        <span class="slider"></span>
+    </label>
+</div>
+
+<div class="container">
+
+    <!-- ✅ Main Title -->
+    <h1>Rebalance Engine v1.5<br>
+        <span class="subtitle">ETF 自動資產再平衡工具</span>
+    </h1>
+
+    <!-- ✅ Upload Label -->
+    <p class="label">📁 Upload Input File<br>📁 上傳再平衡輸入檔案</p>
+
+    <!-- ✅ Drag & Drop Area -->
+    <div id="drop-area">
+        <div class="drop-inner">
+            <p class="drop-text">📄 Drag & Drop File Here<br>或 點擊選擇檔案</p>
         </div>
-        <div class="form-row">
-            <button type="submit">Rebalance</button>
-        </div>
-    </form>
-    <div id="result"></div>
+        <input type="file" id="fileElem" accept=".xlsx">
+    </div>
 
-    <script>
-        const dropZone = document.getElementById("dropZone");
-        const fileInput = document.getElementById("fileInput");
-        const form = document.getElementById("rebalanceForm");
-        const result = document.getElementById("result");
+    <!-- ✅ Selected File Display -->
+    <p class="selected-file">
+        Selected（已選擇）: <span id="file-name">None</span>
+    </p>
 
-        dropZone.addEventListener("click", () => fileInput.click());
-        dropZone.addEventListener("dragover", e => {
-            e.preventDefault();
-            dropZone.classList.add("dragover");
-        });
-        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
-        dropZone.addEventListener("drop", e => {
-            e.preventDefault();
-            dropZone.classList.remove("dragover");
-            fileInput.files = e.dataTransfer.files;
-            dropZone.textContent = fileInput.files[0].name;
-        });
-        fileInput.addEventListener("change", () => {
-            if (fileInput.files.length > 0) {
-                dropZone.textContent = fileInput.files[0].name;
-            }
-        });
+    <!-- ✅ Button -->
+    <button id="rebalance-btn" disabled>✅ Start Rebalance（開始再平衡）</button>
 
-        form.addEventListener("submit", async e => {
-            e.preventDefault();
-            if (!fileInput.files.length) return;
+    <!-- ✅ Loader -->
+    <div id="loader" class="hidden">
+        Calculating…（計算中…）<span class="dots"></span>
+    </div>
 
-            const formData = new FormData();
-            formData.append("file", fileInput.files[0]);
+    <!-- ✅ Success Box -->
+    <div id="success-box" class="hidden">
+        ✅ Completed! Output Ready.<br>
+        已完成！輸出檔案可下載。
+        <br><br>
+        <a id="download-btn" href="#" download>📥 Download Output（下載輸出檔案）</a>
+    </div>
 
-            result.textContent = "處理中...";
+    <!-- ✅ Status Display -->
+    <div id="status-box">
+        <p>Status（狀態）:</p>
+        <p id="status-msg">Waiting for file…（等待檔案…）</p>
+    </div>
 
-            try {
-                const res = await fetch("/api/rebalance", { method: "POST", body: formData });
-                if (!res.ok) throw new Error("Rebalance failed");
+</div>
 
-                const blob = await res.blob();
-                const url = window.URL.createObjectURL(blob);
+<!-- ✅ Load external JS -->
+<script src="/static/ui.js"></script>
 
-                // ✅ Always trust server-provided filename
-                const disposition = res.headers.get("Content-Disposition");
-                let filename = "rebalance_result.xlsx";
-                if (disposition) {
-                    const match = disposition.match(/filename\*?=(?:UTF-8''|")?([^\";]+)/);
-                    if (match && match[1]) {
-                        try {
-                            filename = decodeURIComponent(match[1]);
-                        } catch {
-                            filename = match[1];
-                        }
-                    }
-                }
-
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-
-                result.textContent = "✅ 已完成，檔案已下載: " + filename;
-            } catch (err) {
-                result.textContent = "❌ Error: " + err.message;
-            }
-        });
-    </script>
 </body>
 </html>
