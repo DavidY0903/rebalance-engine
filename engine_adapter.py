@@ -1,11 +1,13 @@
-# engine_adapter.py
 import tempfile
 from pathlib import Path
-from rebalance_engine_v1_4 import run_engine
 from datetime import datetime, timedelta
 import re
 import os
 import pandas as pd
+
+# ✅ Import v1.5 main() function
+import rebalance_engine_v1_5
+
 
 def run_rebalance(input_path: str, *, output_filename: str | None = None) -> str:
     tmpdir = Path(tempfile.mkdtemp(prefix="rebalance_"))
@@ -16,9 +18,7 @@ def run_rebalance(input_path: str, *, output_filename: str | None = None) -> str
         hk_now = datetime.utcnow() + timedelta(hours=8)
         timestamp_str = hk_now.strftime("%Y-%m-%d %H %M %S")
 
-        # -------------------------------
-        # ✅ Improved user tag extraction
-        # -------------------------------
+        # ✅ Improved user tag extraction (optional A1 detection)
         try:
             user_df__tmp = pd.read_excel(input_path, sheet_name="Input File", header=None)
             _a1 = user_df__tmp.iloc[0, 0] if user_df__tmp.shape[0] > 0 and user_df__tmp.shape[1] > 0 else ""
@@ -36,4 +36,19 @@ def run_rebalance(input_path: str, *, output_filename: str | None = None) -> str
         output_filename = f"rebalance recommendation ({user_name})({timestamp_str}).xlsx"
         out_path = tmpdir / output_filename
 
-    return run_engine(str(input_path), str(out_path))
+    # ✅ Patch: override tkinter-based file picker
+    rebalance_engine_v1_5._pick_input_filename = lambda: str(input_path)
+
+    # ✅ Patch: override output filename behavior (inside v1.5 engine)
+    # This ensures output goes exactly to out_path instead of same folder as input
+    original_save = rebalance_engine_v1_5.Workbook.save
+
+    def patched_save(self, filename):
+        original_save(self, str(out_path))
+
+    rebalance_engine_v1_5.Workbook.save = patched_save
+
+    # ✅ Execute engine
+    rebalance_engine_v1_5.main()
+
+    return str(out_path)

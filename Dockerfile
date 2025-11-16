@@ -30,4 +30,4 @@ COPY . /app/
 EXPOSE 8000
 
 # ✅ CMD must always be last
-CMD conda run --no-capture-output -n rebalance_env uvicorn app:app --host 0.0.0.0 --port $PORT
+CMD conda run --no-capture-output -n rebalance_env uvicorn app:app --host 0.0.0.0 --port ${PORT:-8000}
