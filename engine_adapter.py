@@ -46,7 +46,13 @@ def run_rebalance(input_path: str, *, output_filename: str | None = None) -> str
     def patched_save(self, filename):
         original_save(self, str(out_path))
 
-    rebalance_engine_v1_5.Workbook.save = patched_save
+    original_save = rebalance_engine_v1_5.Workbook.save
+
+    try:
+        rebalance_engine_v1_5.Workbook.save = patched_save
+        rebalance_engine_v1_5.main()
+    finally:
+        rebalance_engine_v1_5.Workbook.save = original_save
 
     # ✅ Execute engine
     rebalance_engine_v1_5.main()
