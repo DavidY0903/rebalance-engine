@@ -5,7 +5,6 @@
 # ✅ Restored pointer-based file picker (manual selection)
 # ✅ Dynamic output naming (<input>_output.xlsx)
 # ✅ Robust I/O + section parsing (from 9-27 baseline)
-# ✅ Live Yahoo Finance bid/ask/last pricing
 # ✅ Bilingual Excel sheets and formatting
 # ✅ Correct handling of zero / negative cash
 # ===============================================================
@@ -13,7 +12,6 @@
 import os, re, time
 import pandas as pd
 import numpy as np
-import yfinance as yf
 from datetime import datetime
 # from tkinter import Tk, filedialog
 from openpyxl import Workbook
@@ -31,6 +29,11 @@ MAX_FALLBACK_ENTRIES = 500
 
 load_dotenv(dotenv_path=".env", override=True)
 POLYGON_API_KEY = os.getenv("POLYGON_API_KEY")
+
+ALPHA_VANTAGE_KEY = os.getenv("ALPHA_VANTAGE_KEY")
+
+if not ALPHA_VANTAGE_KEY:
+    print("❌ ALPHA_VANTAGE_KEY not found. Check .env or environment variables.")
 
 FALLBACK_PATH = Path("price_fallback.json")
 
@@ -76,31 +79,52 @@ def _fetch_polygon_price(ticker: str) -> Optional[float]:
 
     return None
 
+def _fetch_alpha_price(ticker: str) -> Optional[float]:
+    """
+    Alpha Vantage GLOBAL_QUOTE
+    Works well for ETFs (VGT / VIG / XLK / etc.)
+    """
+    if not ALPHA_VANTAGE_KEY:
+        return None
 
-def _fetch_yahoo_price(ticker: str) -> Optional[float]:
-    for _ in range(2):  # retry once
-        try:
-            hist = yf.Ticker(ticker).history(
-                period="5d",
-                interval="1d",
-                auto_adjust=False
-            )
-            if hist is not None and not hist.empty:
-                px = float(hist["Close"].dropna().iloc[-1])
-                if px > 0:
-                    return px
-        except Exception:
-            time.sleep(0.3)
+    try:
+        r = requests.get(
+            "https://www.alphavantage.co/query",
+            params={
+                "function": "GLOBAL_QUOTE",
+                "symbol": ticker,
+                "apikey": ALPHA_VANTAGE_KEY
+            },
+            timeout=8
+        )
+        if r.status_code != 200:
+            return None
+
+        js = r.json()
+
+        if "Note" in js or "Information" in js:
+            return None
+
+        quote = js.get("Global Quote", {})
+        px = quote.get("05. price")
+
+        if px:
+            px = float(px)
+            return px if px > 0 else None
+
+    except Exception:
+        return None
+
     return None
 
 def fetch_last_prices(
     tickers: list[str],
     *,
-    sleep_between: float = 0.6
+    sleep_between: float = 12.0  # Alpha free tier needs this
 ) -> dict[str, float]:
     """
     Live-first, HTTP-safe price resolver.
-    Memory-safe fallback (KB-level).
+    Polygon → Alpha Vantage → local fallback
     """
 
     tickers = list(dict.fromkeys(t.strip().upper() for t in tickers if t))
@@ -119,23 +143,24 @@ def fetch_last_prices(
             _save_fallback(fallback)
             continue
 
-        # 2️⃣ Yahoo (secondary, throttled)
-        px = _fetch_yahoo_price(t)
+        # 2️⃣ Alpha Vantage (secondary, strict rate limit)
+        px = _fetch_alpha_price(t)
+        time.sleep(sleep_between)
+
         if px is not None:
-            print(f"   ⚠️ Yahoo fallback: {px}", flush=True)
+            print(f"   🟦 Alpha Vantage: {px}", flush=True)
             resolved[t] = px
             fallback[t] = px
             _save_fallback(fallback)
-            time.sleep(sleep_between)
             continue
 
-        # 3️⃣ Local fallback (last known)
+        # 3️⃣ Local fallback
         if t in fallback:
             print(f"   🟡 Local fallback: {fallback[t]}", flush=True)
             resolved[t] = float(fallback[t])
             continue
 
-        # 4️⃣ Hard fail (rare)
+        # 4️⃣ Hard fail marker (handled later)
         print(f"   ❌ No price available", flush=True)
         resolved[t] = np.nan
 
@@ -305,7 +330,7 @@ def main():
     if missing:
         raise ValueError(
             f"❌ Price fetch failed for: {missing}\n"
-            f"Polygon + Yahoo + local fallback all failed. "
+            f"Polygon + Alpha Vantage + local fallback all failed."
             f"Try re-run, or check ticker symbols, or seed fallback once."
         )
 
