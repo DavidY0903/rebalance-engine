@@ -54,7 +54,4 @@ def run_rebalance(input_path: str, *, output_filename: str | None = None) -> str
     finally:
         rebalance_engine_v1_5.Workbook.save = original_save
 
-    # ✅ Execute engine
-    rebalance_engine_v1_5.main()
-
     return str(out_path)
