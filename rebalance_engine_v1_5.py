@@ -13,7 +13,7 @@ import os, re, time
 import pandas as pd
 import numpy as np
 from datetime import datetime
-# from tkinter import Tk, filedialog
+from tkinter import Tk, filedialog
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
@@ -24,7 +24,6 @@ import requests
 from dotenv import load_dotenv
 from typing import Optional
 
-PRICE_MODE = "REFERENCE_CLOSE"  # not real-time
 MAX_FALLBACK_ENTRIES = 500
 
 load_dotenv(dotenv_path=".env", override=True)
@@ -169,15 +168,6 @@ def fetch_last_prices(
 # ---------- Input Handling (Pointer File Picker) ----------
 def _pick_input_filename() -> str:
     print("📂 Please select the Excel input file...")
-
-    try:
-        from tkinter import Tk, filedialog
-    except Exception:
-        raise RuntimeError(
-            "❌ GUI file picker not available. "
-            "Use HTTP upload instead."
-        )
-
     root = Tk()
     root.withdraw()
     file_path = filedialog.askopenfilename(
@@ -185,10 +175,8 @@ def _pick_input_filename() -> str:
         filetypes=[("Excel files", "*.xlsx")]
     )
     root.update()
-
     if not file_path:
-        raise FileNotFoundError("❌ No file selected.")
-
+        raise FileNotFoundError("❌ No file selected. Please choose an input Excel file.")
     print(f"✅ Selected input file: {os.path.basename(file_path)}")
     return file_path
 
@@ -298,9 +286,6 @@ def main():
     config = _extract_config(raw_input_df)
     target_df = _extract_section(raw_input_df, "Target Portfolio & Weight", ["Ticker", "Weight"])[["Ticker", "Weight"]]
     port_df = _extract_section(raw_input_df, "Current Portfolio & Quantity", ["Ticker", "Quantity"])[["Ticker", "Quantity"]]
-    
-    if any(config[k] not in (0, 1) for k in ["Upper Bound", "Lower Bound", "Relax Limit"]):
-        print("⚠️ Upper/Lower Bound / Relax Limit ignored in v1.5")
 
     target_df.columns = ["Ticker", "Target Weight (%)"]
     target_df["Target Weight (%)"] = (
@@ -317,21 +302,17 @@ def main():
 
     df = pd.merge(target_df, port_df, on="Ticker", how="outer").fillna({"Target Weight (%)": 0.0, "Shares": 0.0})
     
-    df["Ticker"] = df["Ticker"].astype(str).str.strip()
-    df = df[df["Ticker"].ne("") & df["Ticker"].str.lower().ne("nan")].copy()
-
     price_map = fetch_last_prices(df["Ticker"].tolist())
 
-    df["Last"] = df["Ticker"].astype(str).str.upper().map(price_map)
+    df["Last"] = df["Ticker"].map(price_map)
     df["Ask"] = df["Last"]
     df["Bid"] = df["Last"]
-
+    
     missing = df[df["Last"].isna()]["Ticker"].tolist()
     if missing:
         raise ValueError(
             f"❌ Price fetch failed for: {missing}\n"
             f"Polygon + Alpha Vantage + local fallback all failed."
-            f"Try re-run, or check ticker symbols, or seed fallback once."
         )
 
     df["Used Price"] = df["Last"]
@@ -365,19 +346,13 @@ def main():
 
     # Step 3 — Clean tiny floats
     df.loc[abs(df["Shares to Buy/Sell"]) < 0.01, "Shares to Buy/Sell"] = 0
-    
-    # FIX-2: Enforce no fractional shares if disabled
-    if not config["Allow Partial Shares"]:
-        df["Shares to Buy/Sell"] = df["Shares to Buy/Sell"].round(0)
 
     # Step 4 — Recompute Actions cleanly
     df["Action"] = np.where(df["Shares to Buy/Sell"] > 0, "Buy",
                     np.where(df["Shares to Buy/Sell"] < 0, "Sell", "Hold"))
 
-    df.loc[(df["Shares"] == 0) & (df["Target Weight (%)"] > 0),"Action"] = "Buy"
+    df.loc[df["Shares"] == 0, "Action"] = "Buy"
     df.loc[(df["Target Weight (%)"] == 0) & (df["Shares"] > 0), "Action"] = "Sell All"
-    
-    df.loc[df["Action"] == "Sell All", "Shares to Buy/Sell"] = -df["Shares"]
 
     df["Order Type"] = "Limit"
     df["Limit Price"] = np.where(df["Action"].isin(["Buy", "買進"]), df["Ask"], df["Bid"])
@@ -502,24 +477,32 @@ def main():
     ws_rebal.append([])
     ws_rebal.append([])
 
-    # ----- Styled Summary Block (Bilingual + Auto Wrap + Borders + Align) -----
+        # ----- Styled Summary Block (Bilingual + Auto Wrap + Borders + Align) -----
     for row_idx, row in enumerate(dataframe_to_rows(summary, index=False, header=True), start=1):
         ws_rebal.append(row)
 
-    # Apply styles to the entire summary block (including header row)
-    summary_rows = len(summary) + 1  # header + data
-    start_row = ws_rebal.max_row - summary_rows + 1
-    end_row = ws_rebal.max_row
+    # Apply styles to the entire summary block
+    start_row = ws_rebal.max_row - len(summary)  # first summary row
+    end_row = ws_rebal.max_row                   # last summary row
 
     for r in range(start_row, end_row + 1):
         summary_cell = ws_rebal[f"A{r}"]
         value_cell = ws_rebal[f"B{r}"]
 
-        summary_cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        # Summary column formatting
+        summary_cell.alignment = Alignment(
+            horizontal="left",
+            vertical="center",
+            wrap_text=True
+        )
         summary_cell.font = Font(name="新細明體", bold=False, size=11)
         summary_cell.border = full_border
 
-        value_cell.alignment = Alignment(horizontal="right", vertical="center")
+        # Value column formatting (right-aligned)
+        value_cell.alignment = Alignment(
+            horizontal="right",
+            vertical="center"
+        )
         value_cell.font = Font(name="新細明體", bold=True, size=11)
         value_cell.border = full_border
 
