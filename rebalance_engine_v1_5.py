@@ -189,27 +189,53 @@ def _extract_config(raw_df: pd.DataFrame) -> dict:
     cfg.iloc[:, 0] = cfg.iloc[:, 0].astype(str).str.strip().str.lower()
     kv = {_norm_key(k): v for k, v in zip(cfg.iloc[:, 0], cfg.iloc[:, 1])}
 
-    def getv(name, pct=False, yesno=False, default=None):
-        k = _norm_key(name)
-        if k not in kv:
-            return default
-        v = kv[k]
-        if yesno:
-            return str(v).strip().lower() in ("yes", "y", "true", "1")
-        if pct:
-            return float(str(v).replace("%", "")) / 100.0
-        try:
-            return float(str(v).replace(",", ""))
-        except:
+    def getv(name, pct=False, yesno=False, default=None, aliases=None):
+        keys = [_norm_key(name)]
+        if aliases:
+            keys += [_norm_key(a) for a in aliases]
+
+        found_key = None
+        for k in keys:
+            if k in kv:
+                found_key = k
+                v = kv[k]
+                break
+
+        if found_key is None:
+            print(f"⚠️ [Config] Key NOT found: {keys}, using default={default}")
             return default
 
-    return {
+        if yesno:
+            result = str(v).strip().lower() in ("yes", "y", "true", "1")
+            return result
+
+        if pct:
+            result = float(str(v).replace("%", "")) / 100.0
+            return result
+
+        try:
+            result = float(str(v).replace(",", ""))
+            return result
+        except Exception:
+            return default
+
+    config = {
         "Cash Contribution": getv("cash contribution", default=0.0),
         "Upper Bound": getv("upper bound", pct=True, default=1.0),
         "Lower Bound": getv("lower bound", pct=True, default=0.0),
         "Relax Limit": getv("relax limit", pct=True, default=1.0),
-        "Allow Partial Shares": getv("allow partial shares", yesno=True, default=False),
+        "Allow Partial Shares": getv(
+            "allow partial shares",
+            yesno=True,
+            default=False,
+            aliases=[
+                "allow partial shares y/n",
+                "allow partial shares yn",
+                "允許零股"
+            ]
+        ),
     }
+    return config
 
 def _extract_section(raw_df: pd.DataFrame, title: str, required_cols: list[str]) -> pd.DataFrame:
     m = raw_df[raw_df.iloc[:, 0].astype(str).str.contains(title, na=False)]
@@ -320,39 +346,120 @@ def main():
     total_value = df["Market Value"].sum() + config["Cash Contribution"]
     df["Target Value"] = df["Target Weight (%)"] * total_value
 
-    # ---------- Allocation math (C-2 LOGIC: proper negative-cash handling) ----------
+    # ---------- Allocation math (supports Allow Partial Shares + cash + / 0 / -) ----------
+    allow_partial = bool(config.get("Allow Partial Shares", False))
+    cash_contrib = float(config.get("Cash Contribution", 0.0))
+
     df["Diff Value"] = df["Target Value"] - df["Market Value"]
 
-    # Step 1 — Start with standard proportional rebalance
-    df["Shares to Buy/Sell"] = (df["Diff Value"] / df["Used Price"]).round(2)
+    # Base rebalance (float first)
+    df["Shares to Buy/Sell"] = df["Diff Value"] / df["Used Price"]
 
-    # Step 2 — If Cash Contribution is negative → override logic
-    neg_cash = config["Cash Contribution"] < 0
+    # ---------- Withdrawal mode (cash < 0) ----------
+    if cash_contrib < 0:
+        needed = abs(cash_contrib)
 
-    if neg_cash:
-        needed = abs(config["Cash Contribution"])
-
-        # Sell ONLY from positive-MV assets (ignore target weight)
-        df["SellableValue"] = df["Market Value"]
-
-        total_sellable = df["SellableValue"].sum()
+        df["SellableValue"] = df["Market Value"].clip(lower=0)
+        total_sellable = float(df["SellableValue"].sum())
 
         if total_sellable > 0:
             df["ProportionalToSell"] = df["SellableValue"] / total_sellable
             df["ValueToSell"] = df["ProportionalToSell"] * needed
-            df["Shares to Buy/Sell"] = -(df["ValueToSell"] / df["Used Price"]).round(2)
+            df["Shares to Buy/Sell"] = -(df["ValueToSell"] / df["Used Price"])
         else:
-            df["Shares to Buy/Sell"] = 0
+            df["Shares to Buy/Sell"] = 0.0
 
-    # Step 3 — Clean tiny floats
-    df.loc[abs(df["Shares to Buy/Sell"]) < 0.01, "Shares to Buy/Sell"] = 0
+    # Clean tiny noise
+    df.loc[df["Shares to Buy/Sell"].abs() < 1e-6, "Shares to Buy/Sell"] = 0.0
+    
+    PARTIAL_DECIMALS = 2
+    FACTOR = 10 ** PARTIAL_DECIMALS
 
-    # Step 4 — Recompute Actions cleanly
-    df["Action"] = np.where(df["Shares to Buy/Sell"] > 0, "Buy",
-                    np.where(df["Shares to Buy/Sell"] < 0, "Sell", "Hold"))
+    # ---------- Enforce share granularity ----------
+    if not allow_partial:
+        df["Shares to Buy/Sell"] = np.where(
+            df["Shares to Buy/Sell"] > 0,
+            np.floor(df["Shares to Buy/Sell"]),
+            np.ceil(df["Shares to Buy/Sell"])
+        )
+    else:
+        # cap first (safety)
+        df["Shares to Buy/Sell"] = np.where(
+            df["Shares to Buy/Sell"] < -df["Shares"],
+            -df["Shares"],
+            df["Shares to Buy/Sell"]
+        )
 
-    df.loc[df["Shares"] == 0, "Action"] = "Buy"
+        # broker-safe rounding: buys floor, sells ceil (toward zero)
+        df["Shares to Buy/Sell"] = np.where(
+            df["Shares to Buy/Sell"] > 0,
+            np.floor(df["Shares to Buy/Sell"] * FACTOR) / FACTOR,
+            np.ceil(df["Shares to Buy/Sell"] * FACTOR) / FACTOR
+        )
+
+        # cap again after rounding (just in case rounding crossed boundary)
+        df["Shares to Buy/Sell"] = np.where(
+            df["Shares to Buy/Sell"] < -df["Shares"],
+            -df["Shares"],
+            df["Shares to Buy/Sell"]
+        )
+    
+    # ---------- Integer buy fallback (cash-positive, no partial shares) ----------
+    if (
+        cash_contrib > 0
+        and not allow_partial
+        and (df["Shares to Buy/Sell"] > 0).sum() == 0
+    ):
+        buy_candidates = df[
+            (df["Shares to Buy/Sell"] == 0) &
+            (df["Diff Value"] > 0) &
+            (df["Used Price"] <= cash_contrib)
+        ].copy()
+
+        if not buy_candidates.empty:
+            # pick the most underweight asset (largest Diff Value)
+            idx = buy_candidates.sort_values("Diff Value", ascending=False).index[0]
+            df.at[idx, "Shares to Buy/Sell"] = 1
+
+    # ---------- Withdrawal top-up (integer shares) ----------
+    if cash_contrib < 0 and not allow_partial:
+        proceeds = float(
+            ((-df["Shares to Buy/Sell"].clip(upper=0)) * df["Used Price"]).sum()
+        )
+        shortfall = needed - proceeds
+
+        if shortfall > 0:
+            sell_candidates = (
+                df[(df["Shares"] > 0) & (df["Used Price"] > 0)]
+                .sort_values("Market Value", ascending=False)
+            )
+
+            for idx in sell_candidates.index:
+                if shortfall <= 0:
+                    break
+
+                already_selling = int(abs(min(0, df.at[idx, "Shares to Buy/Sell"])))
+                remaining = int(df.at[idx, "Shares"]) - already_selling
+                if remaining <= 0:
+                    continue
+
+                px = float(df.at[idx, "Used Price"])
+                extra = int(np.ceil(shortfall / px))
+                extra = min(extra, remaining)
+
+                if extra > 0:
+                    df.at[idx, "Shares to Buy/Sell"] -= extra
+                    shortfall -= extra * px
+
+    # ---------- Actions ----------
+    df["Action"] = np.where(
+        df["Shares to Buy/Sell"] > 0, "Buy",
+        np.where(df["Shares to Buy/Sell"] < 0, "Sell", "Hold")
+    )
+
+    df.loc[(df["Shares"] == 0) & (df["Target Weight (%)"] > 0), "Action"] = "Buy"
     df.loc[(df["Target Weight (%)"] == 0) & (df["Shares"] > 0), "Action"] = "Sell All"
+    df.loc[df["Action"] == "Sell All", "Shares to Buy/Sell"] = -df["Shares"]
 
     df["Order Type"] = "Limit"
     df["Limit Price"] = np.where(df["Action"].isin(["Buy", "買進"]), df["Ask"], df["Bid"])
@@ -477,7 +584,7 @@ def main():
     ws_rebal.append([])
     ws_rebal.append([])
 
-        # ----- Styled Summary Block (Bilingual + Auto Wrap + Borders + Align) -----
+    # ----- Styled Summary Block (Bilingual + Auto Wrap + Borders + Align) -----
     for row_idx, row in enumerate(dataframe_to_rows(summary, index=False, header=True), start=1):
         ws_rebal.append(row)
 
