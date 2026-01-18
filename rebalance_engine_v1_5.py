@@ -350,14 +350,20 @@ def main():
     allow_partial = bool(config.get("Allow Partial Shares", False))
     cash_contrib = float(config.get("Cash Contribution", 0.0))
     
-    pure_rebalance = (cash_contrib == 0)
+    if cash_contrib < 0:
+        print("🔄 Rebalance mode: WITHDRAWAL (negative cash)")
+    elif cash_contrib == 0:
+        print("🔄 Rebalance mode: PURE REBALANCE (cash-neutral)")
+    else:
+        print("🔄 Rebalance mode: CONTRIBUTION (positive cash)")
     
-    print(
-        f"🔄 Rebalance mode: "
-        f"{'PURE (cash-neutral)' if pure_rebalance else 'CASH-based'}"
-    )
+    pure_rebalance = (cash_contrib == 0)
 
     df["Diff Value"] = df["Target Value"] - df["Market Value"]
+    
+    if cash_contrib < 0:
+        df["Target Value"] = np.nan
+        df["Diff Value"] = -df["Market Value"]
 
     # Base rebalance (float first)
     df["Shares to Buy/Sell"] = df["Diff Value"] / df["Used Price"]
@@ -504,6 +510,11 @@ def main():
                     )
 
                 df.at[idx, "Shares to Buy/Sell"] -= delta_shares
+                df["Shares to Buy/Sell"] = np.where(
+                    df["Shares to Buy/Sell"] < -df["Shares"],
+                    -df["Shares"],
+                    df["Shares to Buy/Sell"]
+                )
 
     # ---------- Actions ----------
     df["Action"] = np.where(
