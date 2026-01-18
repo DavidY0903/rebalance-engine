@@ -349,6 +349,13 @@ def main():
     # ---------- Allocation math (supports Allow Partial Shares + cash + / 0 / -) ----------
     allow_partial = bool(config.get("Allow Partial Shares", False))
     cash_contrib = float(config.get("Cash Contribution", 0.0))
+    
+    pure_rebalance = (cash_contrib == 0)
+    
+    print(
+        f"🔄 Rebalance mode: "
+        f"{'PURE (cash-neutral)' if pure_rebalance else 'CASH-based'}"
+    )
 
     df["Diff Value"] = df["Target Value"] - df["Market Value"]
 
@@ -450,6 +457,53 @@ def main():
                 if extra > 0:
                     df.at[idx, "Shares to Buy/Sell"] -= extra
                     shortfall -= extra * px
+                    
+    # ---------- Pure rebalance cash neutralization ----------
+    if pure_rebalance:
+        buy_value = (
+            df.loc[df["Shares to Buy/Sell"] > 0, "Shares to Buy/Sell"]
+            * df["Used Price"]
+        ).sum()
+
+        sell_value = (
+            -df.loc[df["Shares to Buy/Sell"] < 0, "Shares to Buy/Sell"]
+            * df["Used Price"]
+        ).sum()
+
+        imbalance = round(buy_value - sell_value, 2)
+
+        if abs(imbalance) > 0.01:
+            # Need more sells if imbalance > 0 (buy > sell)
+            # Need more buys if imbalance < 0
+            if imbalance > 0:
+                candidates = df[
+                    (df["Shares"] > 0) & (df["Shares to Buy/Sell"] <= 0)
+                ].sort_values("Diff Value")
+            else:
+                candidates = df[
+                    df["Shares to Buy/Sell"] >= 0
+                ].sort_values("Diff Value", ascending=False)
+
+            if not candidates.empty:
+                idx = candidates.index[0]
+                px = df.at[idx, "Used Price"]
+
+                delta_shares = imbalance / px
+
+                if allow_partial:
+                    delta_shares = (
+                        np.floor(delta_shares * FACTOR) / FACTOR
+                        if delta_shares > 0
+                        else np.ceil(delta_shares * FACTOR) / FACTOR
+                    )
+                else:
+                    delta_shares = (
+                        int(np.floor(delta_shares))
+                        if delta_shares > 0
+                        else int(np.ceil(delta_shares))
+                    )
+
+                df.at[idx, "Shares to Buy/Sell"] -= delta_shares
 
     # ---------- Actions ----------
     df["Action"] = np.where(
