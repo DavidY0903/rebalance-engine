@@ -417,22 +417,35 @@ def main():
             df["Shares to Buy/Sell"]
         )
     
-    # ---------- Integer buy fallback (cash-positive, no partial shares) ----------
-    if (
-        cash_contrib > 0
-        and not allow_partial
-        and (df["Shares to Buy/Sell"] > 0).sum() == 0
-    ):
-        buy_candidates = df[
-            (df["Shares to Buy/Sell"] == 0) &
-            (df["Diff Value"] > 0) &
-            (df["Used Price"] <= cash_contrib)
-        ].copy()
+    # ---------- Integer buy allocator (cash-positive, no partial shares) ----------
+    if cash_contrib > 0 and not allow_partial:
 
-        if not buy_candidates.empty:
-            # pick the most underweight asset (largest Diff Value)
-            idx = buy_candidates.sort_values("Diff Value", ascending=False).index[0]
-            df.at[idx, "Shares to Buy/Sell"] = 1
+        remaining_cash = cash_contrib
+
+        # Work on a local view sorted by underweight severity
+        while True:
+            buy_candidates = df[
+                (df["Diff Value"] > 0) &
+                (df["Used Price"] <= remaining_cash)
+            ].sort_values("Diff Value", ascending=False)
+
+            if buy_candidates.empty:
+                break
+
+            idx = buy_candidates.index[0]
+            price = df.at[idx, "Used Price"]
+
+            # Buy exactly ONE whole share
+            df.at[idx, "Shares to Buy/Sell"] += 1
+            remaining_cash -= price
+
+            # Update Diff Value so ranking stays correct
+            df.at[idx, "Diff Value"] -= price
+
+            # Safety exit
+            min_price = df.loc[df["Used Price"] > 0, "Used Price"].min()
+            if remaining_cash < min_price:
+                break
 
     # ---------- Withdrawal top-up (integer shares) ----------
     if cash_contrib < 0 and not allow_partial:
