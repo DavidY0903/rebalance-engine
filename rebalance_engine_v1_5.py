@@ -38,6 +38,27 @@ FALLBACK_PATH = Path("price_fallback.json")
 
 if not POLYGON_API_KEY:
     print("❌ POLYGON_API_KEY not found. Check .env or environment variables.")
+    
+FMP_API_KEY = os.getenv("FMP_API_KEY")
+
+def _fetch_fmp_price(ticker: str) -> Optional[float]:
+    if not FMP_API_KEY:
+        return None
+    try:
+        r = requests.get(
+            f"https://financialmodelingprep.com/api/v3/quote/{ticker}",
+            params={"apikey": FMP_API_KEY},
+            timeout=5
+        )
+        if r.status_code != 200:
+            return None
+
+        js = r.json()
+        if isinstance(js, list) and js:
+            px = js[0].get("price")
+            return float(px) if px and px > 0 else None
+    except Exception:
+        return None
 
 def _load_fallback() -> dict:
     if FALLBACK_PATH.exists():
@@ -133,7 +154,7 @@ def fetch_last_prices(
     for i, t in enumerate(tickers, start=1):
         print(f"📡 Resolving price {i}/{len(tickers)}: {t}", flush=True)
 
-        # 1️⃣ Polygon (primary)
+        # 1 Polygon (primary)
         px = _fetch_polygon_price(t)
         if px is not None:
             print(f"   ✅ Polygon: {px}", flush=True)
@@ -142,7 +163,7 @@ def fetch_last_prices(
             _save_fallback(fallback)
             continue
 
-        # 2️⃣ Alpha Vantage (secondary, strict rate limit)
+        # 2 Alpha Vantage (secondary, strict rate limit)
         px = _fetch_alpha_price(t)
         time.sleep(sleep_between)
 
@@ -152,14 +173,23 @@ def fetch_last_prices(
             fallback[t] = px
             _save_fallback(fallback)
             continue
+        
+        # 3 Financial Modeling Prep (cloud-stable)
+        px = _fetch_fmp_price(t)
+        if px is not None:
+            print(f"   🟪 FMP: {px}", flush=True)
+            resolved[t] = px
+            fallback[t] = px
+            _save_fallback(fallback)
+            continue
 
-        # 3️⃣ Local fallback
+        # 4 Local fallback
         if t in fallback:
             print(f"   🟡 Local fallback: {fallback[t]}", flush=True)
             resolved[t] = float(fallback[t])
             continue
 
-        # 4️⃣ Hard fail marker (handled later)
+        # 5 Hard fail marker (handled later)
         print(f"   ❌ No price available", flush=True)
         resolved[t] = np.nan
 
